@@ -286,7 +286,8 @@ export default function App() {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setHasApiKey(hasKey);
       } else {
-        setHasApiKey(true);
+        // Outside AI Studio, check if process.env.GEMINI_API_KEY is available
+        setHasApiKey(!!process.env.GEMINI_API_KEY);
       }
     };
     checkKey();
@@ -403,8 +404,15 @@ export default function App() {
       }
     }
 
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      setError("未检测到 API Key。如果您在 AI Studio 外部运行（如 Vercel），请在环境变量中设置 GEMINI_API_KEY。");
+      setIsGenerating(false);
+      return;
+    }
+
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const base64Data = originalImage.split(',')[1];
       
       const prompt = `
@@ -501,6 +509,8 @@ export default function App() {
       
       if (err.message === "TIMEOUT") {
         msg = "生成超时：AI 响应时间过长，请尝试上传一张尺寸更小的照片或更换风格。";
+      } else if (err.message.includes("API Key")) {
+        msg = "API Key 错误：请确保已在环境变量中正确配置 GEMINI_API_KEY。";
       } else {
         let apiError = null;
         try {
