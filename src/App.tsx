@@ -243,6 +243,11 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [loadingMessage, setLoadingMessage] = useState("AI 正在为您精心装修...");
   const [imageRatio, setImageRatio] = useState<"1:1" | "3:4" | "4:3" | "9:16" | "16:9">("16:9");
+  
+  // SaaS States
+  const [saasUser, setSaasUser] = useState<{ userId: string; name: string; enterprise: string; integral: number } | null>(null);
+  const [saasTool, setSaasTool] = useState<{ toolId: string; name: string; integral: number } | null>(null);
+
   const [durations, setDurations] = useState<{
     resize?: number;
     ai?: number;
@@ -285,6 +290,38 @@ export default function App() {
       }
     };
     checkKey();
+  }, []);
+
+  // postMessage listener for SaaS Init
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type === 'SAAS_INIT') {
+        const { userId, toolId } = event.data;
+        // Filter invalid strings
+        if (!userId || userId === 'null' || userId === 'undefined' || !toolId || toolId === 'null' || toolId === 'undefined') {
+          console.warn('Invalid SaaS IDs received:', { userId, toolId });
+          return;
+        }
+        
+        try {
+          const response = await fetch('/api/tool/launch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, toolId })
+          });
+          const result = await response.json();
+          if (result.success) {
+            setSaasUser({ ...result.data.user, userId });
+            setSaasTool({ ...result.data.tool, toolId });
+          }
+        } catch (error) {
+          console.error('SaaS launch failed:', error);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const handleSelectKey = async () => {
@@ -345,6 +382,26 @@ export default function App() {
     setError(null);
     const startTime = Date.now();
     setDurations({});
+
+    // 1. SaaS Verify Integral
+    if (saasUser && saasTool) {
+      try {
+        const verifyRes = await fetch('/api/tool/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: saasUser.userId, toolId: saasTool.toolId })
+        });
+        const verifyResult = await verifyRes.json();
+        if (!verifyResult.success) {
+          setError(verifyResult.message || '积分不足，无法生成');
+          setIsGenerating(false);
+          return;
+        }
+      } catch (error) {
+        console.error('SaaS verify failed:', error);
+        // Loose validation: proceed if proxy fails
+      }
+    }
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -419,6 +476,24 @@ export default function App() {
         const textFeedback = response.candidates[0].content.parts.find(p => p.text)?.text;
         throw new Error(textFeedback || "AI 未能生成图片，可能是由于图片内容受限。");
       }
+
+      // 2. SaaS Consume Integral
+      if (saasUser && saasTool) {
+        try {
+          const consumeRes = await fetch('/api/tool/consume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: saasUser.userId, toolId: saasTool.toolId })
+          });
+          const consumeResult = await consumeRes.json();
+          if (consumeResult.success) {
+            setSaasUser(prev => prev ? { ...prev, integral: consumeResult.data.currentIntegral } : null);
+          }
+        } catch (error) {
+          console.error('SaaS consume failed:', error);
+        }
+      }
+
       setDurations(prev => ({ ...prev, total: Date.now() - startTime }));
     } catch (err: any) {
       console.error("Generation error:", err);
@@ -466,6 +541,25 @@ export default function App() {
     <div className="min-h-screen bg-[#f5f5f5] flex flex-col md:flex-row font-sans text-[#1a1a1a]">
       {/* Sidebar */}
       <aside className="w-full md:w-[380px] bg-[#f5f5f5] flex flex-col h-screen sticky top-0 p-8">
+        {/* SaaS User Info */}
+        {saasUser && (
+          <div className="mb-8 p-4 bg-white rounded-2xl shadow-sm border border-slate-100">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
+                {saasUser.name[0]}
+              </div>
+              <div>
+                <div className="font-bold text-slate-900">{saasUser.name}</div>
+                <div className="text-xs text-slate-400">{saasUser.enterprise}</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-50">
+              <span className="text-sm text-slate-500">剩余积分</span>
+              <span className="font-mono font-bold text-indigo-600">{saasUser.integral}</span>
+            </div>
+          </div>
+        )}
+
         <div className="mb-8">
           <h2 className="text-lg font-bold text-slate-500 mb-6">1. 选择装修风格</h2>
           
