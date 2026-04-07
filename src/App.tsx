@@ -224,10 +224,10 @@ const BeforeAfterSlider = ({ before, after }: { before: string; after: string })
       </div>
 
       {/* Labels */}
-      <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded pointer-events-none">
+      <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-md text-slate-900 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-slate-100 pointer-events-none uppercase tracking-wider">
         毛坯原图
       </div>
-      <div className="absolute bottom-4 right-4 bg-indigo-600/80 backdrop-blur-sm text-white text-xs px-2 py-1 rounded pointer-events-none">
+      <div className="absolute bottom-4 right-4 bg-black/80 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-white/10 pointer-events-none uppercase tracking-wider">
         装修效果
       </div>
     </div>
@@ -243,6 +243,8 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [loadingMessage, setLoadingMessage] = useState("AI 正在为您精心装修...");
   const [imageRatio, setImageRatio] = useState<"1:1" | "3:4" | "4:3" | "9:16" | "16:9">("16:9");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash-image");
+  const [selectedQuality, setSelectedQuality] = useState<string>("1080p");
   
   // SaaS States
   const [saasUser, setSaasUser] = useState<{ userId: string; name: string; enterprise: string; integral: number } | null>(null);
@@ -346,13 +348,13 @@ export default function App() {
           
           // Detect aspect ratio
           const ratio = width / height;
-          if (ratio > 1.5) {
+          if (ratio >= 1.5) {
             setImageRatio("16:9");
-          } else if (ratio > 1.2) {
+          } else if (ratio >= 1.1) {
             setImageRatio("4:3");
-          } else if (ratio > 0.8) {
+          } else if (ratio >= 0.85) {
             setImageRatio("1:1");
-          } else if (ratio > 0.6) {
+          } else if (ratio >= 0.65) {
             setImageRatio("3:4");
           } else {
             setImageRatio("9:16");
@@ -437,20 +439,26 @@ export default function App() {
       const generateWithRetry = async (retries = 1): Promise<any> => {
         const startAi = Date.now();
         try {
+          const config: any = {
+            systemInstruction: "You are a professional interior designer specializing in image-to-image room transformation. STRICT RULE: NO STRUCTURAL CHANGES. SURFACE OVERLAY ONLY. PRESERVE ALL ORIGINAL WALLS, WINDOWS, DOORS, AND CEILING POSITIONS. ONLY CHANGE TEXTURES, COLORS, AND ADD FURNITURE. DO NOT ALTER THE PHYSICAL ARCHITECTURE OF THE ROOM. MAINTAIN THE ORIGINAL PERSPECTIVE.",
+            imageConfig: {
+              aspectRatio: imageRatio
+            }
+          };
+
+          if (selectedModel === 'gemini-3.1-flash-image-preview') {
+            config.imageConfig.imageSize = selectedQuality;
+          }
+
           const generatePromise = ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: selectedModel,
             contents: {
               parts: [
                 { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
                 { text: prompt }
               ]
             },
-            config: {
-              systemInstruction: "You are a professional interior designer specializing in image-to-image room transformation. STRICT RULE: NO STRUCTURAL CHANGES. SURFACE OVERLAY ONLY. PRESERVE ALL ORIGINAL WALLS, WINDOWS, DOORS, AND CEILING POSITIONS. ONLY CHANGE TEXTURES, COLORS, AND ADD FURNITURE. DO NOT ALTER THE PHYSICAL ARCHITECTURE OF THE ROOM. MAINTAIN THE ORIGINAL PERSPECTIVE.",
-              imageConfig: {
-                aspectRatio: imageRatio
-              }
-            }
+            config
           });
           const result = await Promise.race([generatePromise, timeoutPromise]);
           setDurations(prev => ({ ...prev, ai: (prev.ai || 0) + (Date.now() - startAi) }));
@@ -548,253 +556,331 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] flex flex-col md:flex-row font-sans text-[#1a1a1a]">
-      {/* Sidebar */}
-      <aside className="w-full md:w-[380px] bg-[#f5f5f5] flex flex-col h-screen sticky top-0 p-8">
-        {/* SaaS User Info */}
-        {saasUser && (
-          <div className="mb-8 p-4 bg-white rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                {saasUser.name[0]}
-              </div>
-              <div>
-                <div className="font-bold text-slate-900">{saasUser.name}</div>
-                <div className="text-xs text-slate-400">{saasUser.enterprise}</div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-50">
-              <span className="text-sm text-slate-500">剩余积分</span>
-              <span className="font-mono font-bold text-indigo-600">{saasUser.integral}</span>
-            </div>
+    <div className="min-h-screen bg-[#fcfcfc] flex flex-col font-sans text-[#1a1a1a]">
+      {/* Header */}
+      <header className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-white" />
           </div>
-        )}
+          <h1 className="text-xl font-bold tracking-tight">AI 室内设计助手</h1>
+        </div>
+        <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
+          CORE EDITION V2.0
+        </div>
+      </header>
 
-        <div className="mb-8">
-          <h2 className="text-lg font-bold text-slate-500 mb-6">1. 选择装修风格</h2>
-          
-          <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2 max-h-[calc(100vh-280px)]">
-            {STYLES.map((style) => (
+      <div className="flex-1 w-full max-w-7xl mx-auto px-6 pb-12 grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
+        {/* Left Column: Controls */}
+        <div className="flex flex-col gap-8">
+          {/* SaaS User Info */}
+          {saasUser && (
+            <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold">
+                  {saasUser.name[0]}
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900">{saasUser.name}</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">{saasUser.enterprise}</div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-50">
+                <span className="text-xs text-slate-500">剩余积分</span>
+                <span className="font-mono font-bold text-black">{saasUser.integral}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col h-full">
+            <h2 className="text-sm font-bold text-slate-400 mb-6 uppercase tracking-wider">1. 选择装修风格</h2>
+            
+            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2 max-h-[calc(100vh-500px)]">
+              {STYLES.map((style) => (
+                <button
+                  key={style.id}
+                  onClick={() => setSelectedStyle(style)}
+                  className={cn(
+                    "w-full text-left p-5 rounded-2xl transition-all duration-200 bg-white border",
+                    selectedStyle.id === style.id 
+                      ? "border-black ring-1 ring-black shadow-lg" 
+                      : "border-slate-100 hover:border-slate-300 shadow-sm"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={cn(
+                      "font-bold text-base",
+                      selectedStyle.id === style.id ? "text-black" : "text-slate-700"
+                    )}>
+                      {style.name}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {style.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 space-y-6">
+              <div>
+                <h2 className="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider">2. 生成模型 & 画质</h2>
+                <div className="space-y-3">
+                  {/* Model Select */}
+                  <div className="relative">
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => {
+                        const model = e.target.value;
+                        setSelectedModel(model);
+                        if (model === "gemini-2.5-flash-image") {
+                          setSelectedQuality("1080p");
+                        } else {
+                          setSelectedQuality("1K");
+                        }
+                      }}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all"
+                    >
+                      <option value="gemini-2.5-flash-image">Gemini 2.5 Flash (标准)</option>
+                      <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash (高清)</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <ChevronRight className="w-4 h-4 text-slate-400 rotate-90" />
+                    </div>
+                  </div>
+
+                  {/* Quality Select */}
+                  <div className="relative">
+                    <select
+                      value={selectedQuality}
+                      onChange={(e) => setSelectedQuality(e.target.value)}
+                      disabled={selectedModel === "gemini-2.5-flash-image"}
+                      className={cn(
+                        "w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all",
+                        selectedModel === "gemini-2.5-flash-image" && "bg-slate-50 text-slate-400 cursor-not-allowed opacity-60"
+                      )}
+                    >
+                      {selectedModel === "gemini-2.5-flash-image" ? (
+                        <option value="1080p">1080p (标准画质)</option>
+                      ) : (
+                        <>
+                          <option value="1K">1K (高清)</option>
+                          <option value="2K">2K (超清)</option>
+                          <option value="4K">4K (极致)</option>
+                        </>
+                      )}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <ChevronRight className="w-4 h-4 text-slate-400 rotate-90" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-100">
               <button
-                key={style.id}
-                onClick={() => setSelectedStyle(style)}
+                onClick={handleGenerate}
+                disabled={!originalImage || isGenerating}
                 className={cn(
-                  "w-full text-left p-5 rounded-2xl transition-all duration-200 bg-white shadow-sm",
-                  selectedStyle.id === style.id 
-                    ? "ring-2 ring-black shadow-md" 
-                    : "hover:shadow-md border-transparent"
+                  "w-full py-5 rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all duration-300",
+                  !originalImage || isGenerating
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : "bg-black text-white hover:bg-slate-800 active:scale-[0.98] shadow-xl shadow-black/10"
                 )}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={cn(
-                    "font-bold text-lg",
-                    selectedStyle.id === style.id ? "text-black" : "text-slate-700"
-                  )}>
-                    {style.name}
-                  </span>
-                  {selectedStyle.id === style.id && (
-                    <Sparkles className="w-5 h-5 text-indigo-600" />
-                  )}
-                </div>
-                <p className="text-sm text-slate-400 leading-relaxed">
-                  {style.description}
-                </p>
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    生成装修方案
+                  </>
+                )}
               </button>
-            ))}
+              
+              {!hasApiKey && hasApiKey !== null && (
+                <button
+                  onClick={handleSelectKey}
+                  className="w-full mt-4 py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-medium hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  重新选择 API Key
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="mt-auto pt-6 border-t border-slate-200">
-          <button
-            onClick={handleGenerate}
-            disabled={!originalImage || isGenerating}
-            className={cn(
-              "w-full py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 shadow-lg",
-              !originalImage || isGenerating
-                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                : "bg-black text-white hover:bg-slate-800 active:scale-95"
-            )}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />
-                生成中...
-              </>
+        {/* Right Column: Preview */}
+        <div className="w-full flex flex-col items-center justify-start py-4">
+          <div className={cn(
+            "relative group transition-all duration-500 ease-in-out bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center mx-auto w-full",
+            !originalImage ? "aspect-[16/9] max-w-5xl bg-slate-50/50" : 
+            imageRatio === "16:9" ? "aspect-[16/9] max-w-5xl" : 
+            imageRatio === "4:3" ? "aspect-[4/3] max-w-4xl" :
+            imageRatio === "1:1" ? "aspect-square max-w-[600px]" :
+            imageRatio === "3:4" ? "aspect-[3/4] max-w-[500px]" : "aspect-[9/16] max-w-[450px]"
+          )} style={{ maxHeight: 'calc(100vh - 200px)' }}>
+            {!originalImage ? (
+              <div 
+                {...getRootProps()} 
+                className={cn(
+                  "w-full h-full flex flex-col items-center justify-center transition-all duration-300 cursor-pointer p-12 text-center",
+                  isDragActive ? "bg-slate-100" : "hover:bg-slate-100/50"
+                )}
+              >
+                <input {...getInputProps()} />
+                <div className="w-20 h-20 bg-white rounded-3xl shadow-sm border border-slate-100 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
+                  <ImageIcon className="w-8 h-8 text-slate-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">上传毛坯房实拍</h3>
+                <p className="text-slate-400 text-sm max-w-xs leading-relaxed mb-8">
+                  我们将严格保留原始建筑结构，为您叠加全覆盖的精美装修方案。
+                </p>
+                <div className="px-10 py-4 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition-all active:scale-95 shadow-xl shadow-black/10">
+                  选择照片
+                </div>
+              </div>
             ) : (
-              <>
-                <Sparkles className="w-6 h-6" />
-                立即生成装修方案
-              </>
-            )}
-          </button>
-          
-          {!hasApiKey && hasApiKey !== null && (
-            <button
-              onClick={handleSelectKey}
-              className="w-full mt-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              重新选择 API Key
-            </button>
-          )}
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-4 md:p-8 flex items-center justify-center bg-white md:rounded-l-[40px] shadow-2xl overflow-hidden min-h-screen">
-        <div className={cn(
-          "relative group transition-all duration-500 ease-in-out",
-          imageRatio === "16:9" ? "aspect-[16/9] w-full max-w-5xl" : 
-          imageRatio === "4:3" ? "aspect-[4/3] w-full max-w-4xl" :
-          imageRatio === "1:1" ? "aspect-square h-[70vh]" :
-          imageRatio === "3:4" ? "aspect-[3/4] h-[80vh]" : "aspect-[9/16] h-[85vh]"
-        )}>
-          {!originalImage ? (
-            <div 
-              {...getRootProps()} 
-              className={cn(
-                "w-full h-full border-2 border-dashed rounded-[32px] flex flex-col items-center justify-center transition-all duration-300 cursor-pointer",
-                isDragActive ? "border-indigo-600 bg-indigo-50" : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-              )}
-            >
-              <input {...getInputProps()} />
-              <div className="w-24 h-24 bg-white rounded-full shadow-xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
-                <Upload className="w-10 h-10 text-indigo-600" />
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-3">上传毛坯房照片</h3>
-              <p className="text-slate-400 text-lg">支持 JPG, PNG 格式，建议光线充足</p>
-            </div>
-          ) : (
-            <div className="w-full h-full rounded-[32px] overflow-hidden shadow-2xl bg-slate-100">
-              {generatedImage ? (
-                <div className="w-full h-full relative">
-                  <BeforeAfterSlider before={originalImage} after={generatedImage} />
-                  
-                  <div className="absolute top-8 right-8 flex gap-3">
-                    <button 
-                      onClick={handleDownload}
-                      className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-xl hover:bg-white transition-all active:scale-95 text-slate-900 flex items-center gap-2 font-bold"
-                    >
-                      <Download className="w-5 h-5" />
-                      下载方案
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setOriginalImage(null);
-                        setGeneratedImage(null);
-                      }}
-                      className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-xl hover:bg-white transition-all active:scale-95 text-slate-600"
-                    >
-                      <RefreshCw className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full relative flex items-center justify-center">
-                  <img 
-                    src={originalImage} 
-                    alt="Original" 
-                    className={cn(
-                      "w-full h-full object-cover transition-all duration-700",
-                      isGenerating ? "blur-xl scale-110 opacity-50" : ""
-                    )}
-                    referrerPolicy="no-referrer"
-                  />
-                  
-                  {isGenerating ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 backdrop-blur-sm">
-                      <div className="relative">
-                        <div className="w-24 h-24 border-4 border-white/20 border-t-white rounded-full animate-spin mb-8"></div>
-                        <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-white animate-pulse" />
-                      </div>
-                      <h3 className="text-2xl font-bold text-white mb-4 drop-shadow-lg">
-                        {loadingMessage}
-                      </h3>
-                      <p className="text-white/80 text-lg animate-pulse">预计需要 30-60 秒，请耐心等待...</p>
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity duration-300">
-                      <div className="bg-white/90 backdrop-blur-sm px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
-                        <ImageIcon className="w-6 h-6 text-indigo-600" />
-                        <p className="font-bold text-slate-900">
-                          已准备就绪，请点击左侧按钮生成
-                        </p>
-                      </div>
+              <div className="w-full h-full relative">
+                {generatedImage ? (
+                  <div className="w-full h-full relative">
+                    <BeforeAfterSlider before={originalImage} after={generatedImage} />
+                    
+                    <div className="absolute top-6 right-6 flex gap-2">
                       <button 
-                        onClick={() => setOriginalImage(null)}
-                        className="absolute top-8 right-8 bg-white/90 backdrop-blur-sm p-3 rounded-full shadow-lg hover:bg-white transition-colors text-slate-600"
+                        onClick={handleDownload}
+                        className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-all active:scale-95 text-slate-900 flex items-center gap-2 font-bold text-xs"
                       >
-                        <RefreshCw className="w-5 h-5" />
+                        <Download className="w-4 h-4" />
+                        下载方案
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setOriginalImage(null);
+                          setGeneratedImage(null);
+                          setImageRatio("16:9");
+                        }}
+                        className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-all active:scale-95 text-slate-600"
+                      >
+                        <RefreshCw className="w-4 h-4" />
                       </button>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {error && (
-                <div className="absolute inset-0 bg-white/95 backdrop-blur-md p-10 flex flex-col items-center justify-center text-center z-50">
-                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-600">
-                    <Info className="w-8 h-8" />
                   </div>
-                  <h3 className="text-2xl font-bold text-slate-900 mb-4">生成方案时遇到问题</h3>
-                  <p className="text-slate-500 mb-10 max-w-md leading-relaxed">{error}</p>
-                  
-                  <div className="flex flex-col gap-4 w-full max-w-xs">
-                    {error.includes("权限") && (
-                      <button
-                        onClick={handleSelectKey}
-                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-colors shadow-lg"
-                      >
-                        重新选择 API Key
-                      </button>
+                ) : (
+                  <div className="w-full h-full relative flex items-center justify-center">
+                    <img 
+                      src={originalImage} 
+                      alt="Original" 
+                      className={cn(
+                        "w-full h-full object-cover transition-all duration-700",
+                        isGenerating ? "blur-xl scale-110 opacity-50" : ""
+                      )}
+                      referrerPolicy="no-referrer"
+                    />
+                    
+                    {isGenerating ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/40 backdrop-blur-md">
+                        <div className="relative mb-8">
+                          <div className="w-16 h-16 border-2 border-black/10 border-t-black rounded-full animate-spin"></div>
+                          <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-black animate-pulse" />
+                        </div>
+                        <h3 className="text-xl font-bold text-black mb-2">
+                          {loadingMessage}
+                        </h3>
+                        <p className="text-slate-500 text-xs animate-pulse">预计需要 30-60 秒，请耐心等待...</p>
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 hover:opacity-100 transition-opacity duration-300">
+                        <div className="bg-white/90 backdrop-blur-md px-6 py-3 rounded-xl shadow-xl flex items-center gap-2">
+                          <ImageIcon className="w-4 h-4 text-black" />
+                          <p className="font-bold text-slate-900 text-xs">
+                            已准备就绪，请点击左侧按钮生成
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setOriginalImage(null);
+                            setImageRatio("16:9");
+                          }}
+                          className="absolute top-6 right-6 bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-colors text-slate-600"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      onClick={() => setError(null)}
-                      className="w-full py-4 border border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-colors"
-                    >
-                      返回重试
-                    </button>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Performance Stats */}
-          {(durations.resize || durations.ai || durations.total) && (
-            <div className="mt-6 flex flex-wrap gap-6 text-xs text-slate-400 font-mono bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              {durations.resize && (
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                  图片预处理: {(durations.resize / 1000).toFixed(2)}s
-                </div>
-              )}
-              {durations.ai && (
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                  AI 渲染耗时: {(durations.ai / 1000).toFixed(2)}s
-                </div>
-              )}
-              {durations.total && (
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                  总计耗时: {(durations.total / 1000).toFixed(2)}s
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-orange-400"></span>
-                检测比例: {imageRatio} ({imageRatio.split(':')[0] > imageRatio.split(':')[1] ? '横屏' : imageRatio === '1:1' ? '正方形' : '竖屏'})
+                )}
+
+                {error && (
+                  <div className="absolute inset-0 bg-white/98 backdrop-blur-xl p-10 flex flex-col items-center justify-center text-center z-50">
+                    <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mb-6 text-red-500">
+                      <Info className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">生成方案时遇到问题</h3>
+                    <p className="text-slate-400 mb-8 max-w-xs text-sm leading-relaxed">{error}</p>
+                    
+                    <div className="flex flex-col gap-3 w-full max-w-[240px]">
+                      {error.includes("权限") && (
+                        <button
+                          onClick={handleSelectKey}
+                          className="w-full py-4 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition-colors shadow-lg"
+                        >
+                          重新选择 API Key
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setError(null)}
+                        className="w-full py-4 border border-slate-100 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-colors"
+                      >
+                        返回重试
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              {isGenerating && (
-                <div className="flex items-center gap-2 animate-pulse">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  正在计算中...
+            )}
+            
+            {/* Performance Stats */}
+            {(durations.resize || durations.ai || durations.total) && (
+              <div className="absolute bottom-6 left-6 right-6 flex flex-wrap gap-4 text-[10px] text-slate-400 font-mono bg-white/80 backdrop-blur-md p-3 rounded-xl border border-slate-100/50">
+                {durations.resize && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200"></span>
+                    预处理: {(durations.resize / 1000).toFixed(2)}s
+                  </div>
+                )}
+                {durations.ai && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200"></span>
+                    AI 渲染: {(durations.ai / 1000).toFixed(2)}s
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-200"></span>
+                  比例: {imageRatio}
                 </div>
-              )}
-            </div>
-          )}
+                {isGenerating && (
+                  <div className="flex items-center gap-1.5 animate-pulse">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    计算中...
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </main>
+      </div>
+
+      {/* Footer */}
+      <footer className="w-full py-12 flex flex-col items-center justify-center gap-4">
+        <div className="text-[10px] font-bold tracking-[0.3em] text-slate-300 uppercase">
+          POWERED BY {selectedModel.replace(/-/g, ' ')}
+        </div>
+      </footer>
 
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
