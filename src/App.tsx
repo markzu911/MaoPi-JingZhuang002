@@ -462,12 +462,14 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: selectedModel,
-              contents: {
-                parts: [
-                  { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
-                  { text: prompt }
-                ]
-              },
+              contents: [
+                {
+                  parts: [
+                    { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
+                    { text: prompt }
+                  ]
+                }
+              ],
               config
             })
           }).then(async res => {
