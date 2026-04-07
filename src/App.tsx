@@ -12,6 +12,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import { cn } from './lib/utils';
+import { GoogleGenAI } from "@google/genai";
 
 // --- Types ---
 declare global {
@@ -437,6 +438,22 @@ export default function App() {
         5. HIGH QUALITY: Output a professional, photorealistic interior design rendering.
       `;
 
+      // Check for API key if using gemini-3.1-flash-image-preview
+      if (selectedModel === 'gemini-3.1-flash-image-preview') {
+        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          if (!hasKey) {
+            if (typeof window.aistudio.openSelectKey === 'function') {
+              await window.aistudio.openSelectKey();
+              // Assume success after opening dialog as per instructions
+              setHasApiKey(true);
+            } else {
+              throw new Error("请先在设置中配置 API Key。");
+            }
+          }
+        }
+      }
+
       // Add a 300-second timeout to the request
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("TIMEOUT")), 300000);
@@ -445,8 +462,14 @@ export default function App() {
       const generateWithRetry = async (retries = 1): Promise<any> => {
         const startAi = Date.now();
         try {
+          // Create a new instance right before the call to ensure fresh API key
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+          
           const config: any = {
             systemInstruction: "You are a professional interior designer specializing in image-to-image room transformation. STRICT RULE: NO STRUCTURAL CHANGES. SURFACE OVERLAY ONLY. PRESERVE ALL ORIGINAL WALLS, WINDOWS, DOORS, AND CEILING POSITIONS. ONLY CHANGE TEXTURES, COLORS, AND ADD FURNITURE. DO NOT ALTER THE PHYSICAL ARCHITECTURE OF THE ROOM. MAINTAIN THE ORIGINAL PERSPECTIVE.",
+            generationConfig: {
+              maxOutputTokens: 2048,
+            },
             imageConfig: {
               aspectRatio: imageRatio
             }
@@ -456,28 +479,17 @@ export default function App() {
             config.imageConfig.imageSize = selectedQuality;
           }
 
-          // Use backend proxy to bypass regional restrictions and secure API key
-          const generatePromise = fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: selectedModel,
-              contents: [
-                {
-                  parts: [
-                    { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
-                    { text: prompt }
-                  ]
-                }
-              ],
-              config
-            })
-          }).then(async res => {
-            if (!res.ok) {
-              const errorData = await res.json().catch(() => ({}));
-              throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
-            }
-            return res.json();
+          const generatePromise = ai.models.generateContent({
+            model: selectedModel,
+            contents: [
+              {
+                parts: [
+                  { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
+                  { text: prompt }
+                ]
+              }
+            ],
+            config
           });
 
           const result = await Promise.race([generatePromise, timeoutPromise]);
@@ -485,7 +497,7 @@ export default function App() {
           return result;
         } catch (err: any) {
           setDurations(prev => ({ ...prev, ai: (prev.ai || 0) + (Date.now() - startAi) }));
-          if (retries > 0 && (err.message === "TIMEOUT" || err.message.includes("500") || err.message.includes("INTERNAL"))) {
+          if (retries > 0 && (err.message.includes("TIMEOUT") || err.message.includes("500") || err.message.includes("INTERNAL"))) {
             console.log("Retrying generation...");
             return generateWithRetry(retries - 1);
           }
@@ -542,14 +554,31 @@ export default function App() {
       } else {
         let apiError = null;
         try {
-          apiError = typeof err.message === 'string' && err.message.startsWith('{') ? JSON.parse(err.message) : null;
+          // Handle both stringified JSON and direct object (if thrown directly)
+          const rawMessage = typeof err.message === 'string' ? err.message : JSON.stringify(err);
+          if (rawMessage.startsWith('{')) {
+            apiError = JSON.parse(rawMessage);
+          } else if (typeof err === 'object' && err !== null) {
+            apiError = err;
+          }
         } catch (e) {}
         
-        const errorStatus = apiError?.error?.status || "";
-        const errorMessage = apiError?.error?.message || err.message || "";
-        const errorCode = apiError?.error?.code || "";
+        // Extract error details from Google API format or custom format
+        const errorStatus = apiError?.status || apiError?.error?.status || "";
+        let errorMessage = apiError?.message || apiError?.error?.message || (typeof err.message === 'string' ? err.message : "");
+        const errorCode = apiError?.code || apiError?.error?.code || "";
+        
+        // Ensure errorMessage is a string
+        if (typeof errorMessage === 'object' && errorMessage !== null) {
+          errorMessage = JSON.stringify(errorMessage);
+        }
+        
+        // Final fallback if we still have an object representation
+        if (errorMessage === "[object Object]") {
+          errorMessage = JSON.stringify(apiError || err);
+        }
 
-        if (errorStatus === "PERMISSION_DENIED" || errorMessage.includes("permission")) {
+        if (errorStatus === "PERMISSION_DENIED" || (typeof errorMessage === 'string' && errorMessage.includes("permission"))) {
           msg = "权限不足 (403)：请点击下方按钮重新选择一个【已开启结算】的 API Key。";
           setHasApiKey(false);
         } else if (errorMessage.includes("entity was not found")) {
