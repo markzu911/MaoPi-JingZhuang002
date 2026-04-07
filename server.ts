@@ -48,6 +48,49 @@ app.post("/api/tool/launch", (req, res) => proxyRequest(req, res, "/api/tool/lau
 app.post("/api/tool/verify", (req, res) => proxyRequest(req, res, "/api/tool/verify"));
 app.post("/api/tool/consume", (req, res) => proxyRequest(req, res, "/api/tool/consume"));
 
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    saasConfigured: !!process.env.SAAS_API_URL
+  });
+});
+
+// Gemini Generation Proxy
+app.post("/api/generate", async (req, res) => {
+  const { model, contents, config } = req.body;
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY is missing in server environment");
+    return res.status(500).json({ error: "Server configuration error: API Key missing" });
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+    console.log(`Proxying Gemini request for model: ${model}`);
+    
+    const response = await axios.post(url, {
+      contents,
+      ...config
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 120000 // 2 minute timeout
+    });
+
+    res.json(response.data);
+  } catch (error: any) {
+    const status = error.response?.status || 500;
+    const data = error.response?.data || { error: error.message || "Generation failed" };
+    console.error(`Gemini Proxy Error (${status}):`, JSON.stringify(data));
+    res.status(status).json(data);
+  }
+});
+
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
   const { createServer: createViteServer } = await import("vite");

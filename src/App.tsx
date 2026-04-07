@@ -11,7 +11,6 @@ import {
   Info,
   ChevronLeft
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { cn } from './lib/utils';
 
 // --- Types ---
@@ -284,11 +283,23 @@ export default function App() {
   // Check for API Key on mount
   useEffect(() => {
     const checkKey = async () => {
+      // First check if we are in AI Studio environment
       if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
         const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
-      } else {
-        // Outside AI Studio, check if process.env.GEMINI_API_KEY is available
+        if (hasKey) {
+          setHasApiKey(true);
+          return;
+        }
+      }
+
+      // Then check if the backend has the key configured
+      try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+        setHasApiKey(data.geminiConfigured);
+      } catch (error) {
+        console.error('Health check failed:', error);
+        // Fallback to checking process.env for local dev
         setHasApiKey(!!process.env.GEMINI_API_KEY);
       }
     };
@@ -406,15 +417,10 @@ export default function App() {
       }
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      setError("未检测到 API Key。如果您在 AI Studio 外部运行（如 Vercel），请在环境变量中设置 GEMINI_API_KEY。");
-      setIsGenerating(false);
-      return;
-    }
-
+    // Note: In production (Vercel), we use a backend proxy to handle generation 
+    // to bypass regional restrictions and secure the API key.
+    
     try {
-      const ai = new GoogleGenAI({ apiKey });
       const base64Data = originalImage.split(',')[1];
       
       const prompt = `
@@ -450,16 +456,28 @@ export default function App() {
             config.imageConfig.imageSize = selectedQuality;
           }
 
-          const generatePromise = ai.models.generateContent({
-            model: selectedModel,
-            contents: {
-              parts: [
-                { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
-                { text: prompt }
-              ]
-            },
-            config
+          // Use backend proxy to bypass regional restrictions and secure API key
+          const generatePromise = fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: selectedModel,
+              contents: {
+                parts: [
+                  { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
+                  { text: prompt }
+                ]
+              },
+              config
+            })
+          }).then(async res => {
+            if (!res.ok) {
+              const errorData = await res.json().catch(() => ({}));
+              throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+            }
+            return res.json();
           });
+
           const result = await Promise.race([generatePromise, timeoutPromise]);
           setDurations(prev => ({ ...prev, ai: (prev.ai || 0) + (Date.now() - startAi) }));
           return result;
